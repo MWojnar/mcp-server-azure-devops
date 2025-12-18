@@ -163,6 +163,7 @@ export const handlePullRequestsRequest: RequestHandler = async (
         projectId: params.projectId ?? defaultProject,
         repositoryId: params.repositoryId,
         pullRequestId: params.pullRequestId,
+        includeDiffs: params.includeDiffs,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],

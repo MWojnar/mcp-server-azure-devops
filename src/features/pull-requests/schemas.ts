@@ -250,6 +250,12 @@ export const GetPullRequestChangesSchema = z.object({
     .describe(`The ID or name of the organization (Default: ${defaultOrg})`),
   repositoryId: z.string().describe('The ID or name of the repository'),
   pullRequestId: z.number().describe('The ID of the pull request'),
+  includeDiffs: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Whether to include unified diffs for changed files (default: false). When false, only file paths and change types are returned.',
+    ),
 });
 
 /**

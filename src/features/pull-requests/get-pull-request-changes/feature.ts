@@ -2,6 +2,7 @@ import { WebApi } from 'azure-devops-node-api';
 import {
   GitPullRequestIterationChanges,
   GitChange,
+  VersionControlChangeType,
 } from 'azure-devops-node-api/interfaces/GitInterfaces';
 import { PolicyEvaluationRecord } from 'azure-devops-node-api/interfaces/PolicyInterfaces';
 import { AzureDevOpsError } from '../../../shared/errors';
@@ -11,14 +12,46 @@ export interface PullRequestChangesOptions {
   projectId: string;
   repositoryId: string;
   pullRequestId: number;
+  includeDiffs?: boolean;
+}
+
+export interface PullRequestFileChange {
+  path: string;
+  changeType?: string;
+  patch?: string;
 }
 
 export interface PullRequestChangesResponse {
   changes: GitPullRequestIterationChanges;
   evaluations: PolicyEvaluationRecord[];
-  files: Array<{ path: string; patch: string }>;
+  files: PullRequestFileChange[];
   sourceRefName?: string;
   targetRefName?: string;
+}
+
+/**
+ * Convert VersionControlChangeType enum to a human-readable string
+ */
+function getChangeTypeName(changeType?: VersionControlChangeType): string {
+  if (changeType === undefined) return 'unknown';
+  const changeTypeMap: Record<number, string> = {
+    [VersionControlChangeType.None]: 'none',
+    [VersionControlChangeType.Add]: 'add',
+    [VersionControlChangeType.Edit]: 'edit',
+    [VersionControlChangeType.Encoding]: 'encoding',
+    [VersionControlChangeType.Rename]: 'rename',
+    [VersionControlChangeType.Delete]: 'delete',
+    [VersionControlChangeType.Undelete]: 'undelete',
+    [VersionControlChangeType.Branch]: 'branch',
+    [VersionControlChangeType.Merge]: 'merge',
+    [VersionControlChangeType.Lock]: 'lock',
+    [VersionControlChangeType.Rollback]: 'rollback',
+    [VersionControlChangeType.SourceRename]: 'sourceRename',
+    [VersionControlChangeType.TargetRename]: 'targetRename',
+    [VersionControlChangeType.Property]: 'property',
+    [VersionControlChangeType.All]: 'all',
+  };
+  return changeTypeMap[changeType] ?? 'unknown';
 }
 
 /**
@@ -62,38 +95,55 @@ export async function getPullRequestChanges(
 
     const changeEntries = changes.changeEntries ?? [];
 
-    const getBlobText = async (objId?: string): Promise<string> => {
-      if (!objId) return '';
-      const stream = await gitApi.getBlobContent(
-        options.repositoryId,
-        objId,
-        options.projectId,
-      );
+    let files: PullRequestFileChange[];
 
-      const chunks: Uint8Array[] = [];
-      return await new Promise<string>((resolve, reject) => {
-        stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-        stream.on('error', reject);
-      });
-    };
-
-    const files = await Promise.all(
-      changeEntries.map(async (entry: GitChange) => {
-        const path = entry.item?.path || entry.originalPath || '';
-        const [oldContent, newContent] = await Promise.all([
-          getBlobText(entry.item?.originalObjectId),
-          getBlobText(entry.item?.objectId),
-        ]);
-        const patch = createTwoFilesPatch(
-          entry.originalPath || path,
-          path,
-          oldContent,
-          newContent,
+    if (options.includeDiffs) {
+      // Fetch full diffs for each file
+      const getBlobText = async (objId?: string): Promise<string> => {
+        if (!objId) return '';
+        const stream = await gitApi.getBlobContent(
+          options.repositoryId,
+          objId,
+          options.projectId,
         );
-        return { path, patch };
-      }),
-    );
+
+        const chunks: Uint8Array[] = [];
+        return await new Promise<string>((resolve, reject) => {
+          stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+          stream.on('end', () =>
+            resolve(Buffer.concat(chunks).toString('utf8')),
+          );
+          stream.on('error', reject);
+        });
+      };
+
+      files = await Promise.all(
+        changeEntries.map(async (entry: GitChange) => {
+          const path = entry.item?.path || entry.originalPath || '';
+          const [oldContent, newContent] = await Promise.all([
+            getBlobText(entry.item?.originalObjectId),
+            getBlobText(entry.item?.objectId),
+          ]);
+          const patch = createTwoFilesPatch(
+            entry.originalPath || path,
+            path,
+            oldContent,
+            newContent,
+          );
+          return {
+            path,
+            changeType: getChangeTypeName(entry.changeType),
+            patch,
+          };
+        }),
+      );
+    } else {
+      // Return only file paths and change types (no diffs)
+      files = changeEntries.map((entry: GitChange) => ({
+        path: entry.item?.path || entry.originalPath || '',
+        changeType: getChangeTypeName(entry.changeType),
+      }));
+    }
 
     return {
       changes,

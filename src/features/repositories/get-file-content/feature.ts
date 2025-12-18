@@ -13,7 +13,13 @@ import { AzureDevOpsResourceNotFoundError } from '../../../shared/errors';
 export interface FileContentResponse {
   content: string;
   isDirectory: boolean;
+  totalLines?: number;
+  startLine?: number;
+  endLine?: number;
+  truncated?: boolean;
 }
+
+const MAX_LINES = 1000;
 
 /**
  * Get content of a file or directory from a repository
@@ -23,6 +29,8 @@ export interface FileContentResponse {
  * @param repositoryId - Repository ID or name
  * @param path - Path to file or directory
  * @param versionDescriptor - Optional version descriptor for retrieving file at specific commit/branch/tag
+ * @param startLine - Starting line number (1-indexed). Defaults to 1.
+ * @param endLine - Ending line number (inclusive). If range exceeds 1000 or not provided, returns startLine + 999.
  * @returns Content of the file or list of items if path is a directory
  */
 export async function getFileContent(
@@ -31,6 +39,8 @@ export async function getFileContent(
   repositoryId: string,
   path: string = '/',
   versionDescriptor?: { versionType: GitVersionType; version: string },
+  startLine?: number,
+  endLine?: number,
 ): Promise<FileContentResponse> {
   try {
     const gitApi = await connection.getGitApi();
@@ -102,7 +112,7 @@ export async function getFileContent(
           });
 
           // Use a promise to wait for the stream to finish
-          const content = await new Promise<string>((resolve, reject) => {
+          const fullContent = await new Promise<string>((resolve, reject) => {
             contentStream.on('end', () => {
               // Concatenate all chunks and convert to string
               const buffer = Buffer.concat(chunks);
@@ -114,9 +124,40 @@ export async function getFileContent(
             });
           });
 
+          // Apply line-based pagination
+          const lines = fullContent.split('\n');
+          const totalLines = lines.length;
+
+          // Calculate effective start and end lines
+          const effectiveStartLine = startLine ?? 1;
+          let effectiveEndLine = endLine ?? effectiveStartLine + MAX_LINES - 1;
+
+          // Cap range at MAX_LINES
+          if (effectiveEndLine - effectiveStartLine + 1 > MAX_LINES) {
+            effectiveEndLine = effectiveStartLine + MAX_LINES - 1;
+          }
+
+          // Clamp to actual file bounds
+          const clampedStartLine = Math.max(1, effectiveStartLine);
+          const clampedEndLine = Math.min(totalLines, effectiveEndLine);
+
+          // Extract the requested lines (convert 1-indexed to 0-indexed)
+          const selectedLines = lines.slice(
+            clampedStartLine - 1,
+            clampedEndLine,
+          );
+          const content = selectedLines.join('\n');
+
+          // Determine if content was truncated
+          const truncated = clampedEndLine < totalLines;
+
           return {
             content,
             isDirectory: false,
+            totalLines,
+            startLine: clampedStartLine,
+            endLine: clampedEndLine,
+            truncated,
           };
         }
 

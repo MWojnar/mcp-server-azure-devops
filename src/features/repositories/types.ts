@@ -121,6 +121,16 @@ export interface ListCommitsOptions {
   branchName: string;
   top?: number;
   skip?: number;
+  includeDiffs?: boolean;
+}
+
+/**
+ * File change information in a commit
+ */
+export interface CommitFileChange {
+  path: string;
+  changeType?: string;
+  patch?: string;
 }
 
 /**
@@ -141,7 +151,7 @@ export interface CommitWithContent {
   };
   url?: string;
   parents?: string[];
-  files: Array<{ path: string; patch: string }>;
+  files: CommitFileChange[];
 }
 
 /**

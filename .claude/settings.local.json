@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: reduce default context usage across MCP tools\n\n- search_code: Change includeContent default to false (returns snippets only)\n- get_file_content: Add line-based pagination with 1000-line default limit\n  - New params: startLine, endLine\n  - Response includes: totalLines, startLine, endLine, truncated\n- list_commits: Add includeDiffs param (default: false)\n  - Returns commit metadata + file paths/change types without diffs by default\n- get_pull_request_changes: Add includeDiffs param (default: false)\n  - Returns file paths/change types without full unified diffs by default\n\nAll tools still support full content retrieval via explicit opt-in parameters.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\")"
+    ]
+  }
+}

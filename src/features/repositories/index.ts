@@ -133,6 +133,8 @@ export const handleRepositoriesRequest: RequestHandler = async (
         versionTypeEnum !== undefined && args.version
           ? { versionType: versionTypeEnum, version: args.version }
           : undefined,
+        args.startLine,
+        args.endLine,
       );
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -202,6 +204,7 @@ export const handleRepositoriesRequest: RequestHandler = async (
       const result = await listCommits(connection, {
         ...args,
         projectId: args.projectId ?? defaultProject,
+        includeDiffs: args.includeDiffs,
       });
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],

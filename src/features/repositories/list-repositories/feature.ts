@@ -12,7 +12,7 @@ import { ListRepositoriesOptions, GitRepository } from '../types';
 export async function listRepositories(
   connection: WebApi,
   options: ListRepositoriesOptions,
-): Promise<GitRepository[]> {
+): Promise<Omit<GitRepository, 'isDisabled'>[]> {
   try {
     const gitApi = await connection.getGitApi();
     const repositories = await gitApi.getRepositories(
@@ -20,7 +20,10 @@ export async function listRepositories(
       options.includeLinks,
     );
 
-    return repositories;
+    // Filter out disabled repositories and remove the isDisabled field
+    return repositories
+      .filter((repo) => !repo.isDisabled)
+      .map(({ isDisabled: _isDisabled, ...rest }) => rest);
   } catch (error) {
     if (error instanceof AzureDevOpsError) {
       throw error;

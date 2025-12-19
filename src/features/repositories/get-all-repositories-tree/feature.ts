@@ -31,8 +31,9 @@ export async function getAllRepositoriesTree(
     const gitApi = await connection.getGitApi();
     let repositories: GitRepository[] = [];
 
-    // Get all repositories in the project
-    repositories = await gitApi.getRepositories(options.projectId);
+    // Get all repositories in the project (excluding disabled ones)
+    const allRepositories = await gitApi.getRepositories(options.projectId);
+    repositories = allRepositories.filter((repo) => !repo.isDisabled);
 
     // Filter repositories by name pattern if specified
     if (options.repositoryPattern) {

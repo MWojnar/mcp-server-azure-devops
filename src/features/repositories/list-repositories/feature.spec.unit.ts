@@ -70,4 +70,56 @@ describe('listRepositories unit', () => {
     // Assert
     expect(mockGetRepositories).toHaveBeenCalledWith('test-project', true);
   });
+
+  test('should filter out disabled repositories', async () => {
+    // Arrange
+    const mockRepositories = [
+      { id: '1', name: 'enabled-repo', isDisabled: false },
+      { id: '2', name: 'disabled-repo', isDisabled: true },
+      { id: '3', name: 'another-enabled-repo', isDisabled: false },
+    ];
+    const mockConnection: any = {
+      getGitApi: jest.fn().mockImplementation(() => ({
+        getRepositories: jest.fn().mockResolvedValue(mockRepositories),
+      })),
+    };
+
+    // Act
+    const result = await listRepositories(mockConnection, {
+      projectId: 'test-project',
+    });
+
+    // Assert
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.name)).toEqual([
+      'enabled-repo',
+      'another-enabled-repo',
+    ]);
+  });
+
+  test('should not include isDisabled field in the response', async () => {
+    // Arrange
+    const mockRepositories = [
+      { id: '1', name: 'enabled-repo', isDisabled: false, url: 'http://test' },
+    ];
+    const mockConnection: any = {
+      getGitApi: jest.fn().mockImplementation(() => ({
+        getRepositories: jest.fn().mockResolvedValue(mockRepositories),
+      })),
+    };
+
+    // Act
+    const result = await listRepositories(mockConnection, {
+      projectId: 'test-project',
+    });
+
+    // Assert
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      id: '1',
+      name: 'enabled-repo',
+      url: 'http://test',
+    });
+    expect('isDisabled' in result[0]).toBe(false);
+  });
 });

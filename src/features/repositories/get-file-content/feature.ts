@@ -17,9 +17,85 @@ export interface FileContentResponse {
   startLine?: number;
   endLine?: number;
   truncated?: boolean;
+  /** Note about content truncation (e.g., lines truncated, content capped) */
+  truncationNote?: string;
 }
 
 const MAX_LINES = 1000;
+const MAX_CHARACTERS = 20000;
+const MAX_LINE_LENGTH = 1000;
+
+/**
+ * Truncates content to stay within character limits
+ * First truncates long lines, then truncates total content if needed
+ *
+ * @param lines Array of lines to process
+ * @param startLine 1-indexed start line
+ * @param endLine 1-indexed end line
+ * @returns Processed content with truncation info
+ */
+function truncateContent(
+  lines: string[],
+  startLine: number,
+  endLine: number,
+): {
+  content: string;
+  actualEndLine: number;
+  truncationNote: string | undefined;
+} {
+  const notes: string[] = [];
+  let truncatedLinesCount = 0;
+
+  // First pass: truncate individual lines that exceed MAX_LINE_LENGTH
+  const processedLines = lines.map((line) => {
+    if (line.length > MAX_LINE_LENGTH) {
+      truncatedLinesCount++;
+      return line.substring(0, MAX_LINE_LENGTH) + ' [truncated]';
+    }
+    return line;
+  });
+
+  if (truncatedLinesCount > 0) {
+    notes.push(
+      `${truncatedLinesCount} line(s) exceeded ${MAX_LINE_LENGTH} characters and were truncated`,
+    );
+  }
+
+  // Join and check total length
+  let content = processedLines.join('\n');
+  let actualEndLine = endLine;
+
+  // Second pass: if still over MAX_CHARACTERS, remove lines from the end
+  if (content.length > MAX_CHARACTERS) {
+    let currentLength = 0;
+    let lastValidIndex = 0;
+
+    for (let i = 0; i < processedLines.length; i++) {
+      const lineLength = processedLines[i].length + (i > 0 ? 1 : 0); // +1 for newline
+      if (currentLength + lineLength > MAX_CHARACTERS) {
+        break;
+      }
+      currentLength += lineLength;
+      lastValidIndex = i;
+    }
+
+    // Take only the lines that fit
+    const fittingLines = processedLines.slice(0, lastValidIndex + 1);
+    content = fittingLines.join('\n');
+    actualEndLine = startLine + lastValidIndex;
+
+    const removedLines = processedLines.length - (lastValidIndex + 1);
+    notes.push(
+      `Content exceeded ${MAX_CHARACTERS} characters; truncated ${removedLines} line(s) from end`,
+    );
+  }
+
+  return {
+    content,
+    actualEndLine,
+    truncationNote: notes.length > 0 ? notes.join('. ') : undefined,
+  };
+}
 
 /**
  * Get content of a file or directory from a repository
@@ -146,18 +222,25 @@ export async function getFileContent(
             clampedStartLine - 1,
             clampedEndLine,
           );
-          const content = selectedLines.join('\n');
 
-          // Determine if content was truncated
-          const truncated = clampedEndLine < totalLines;
+          // Apply character-based truncation to prevent token overflow
+          const { content, actualEndLine, truncationNote } = truncateContent(
+            selectedLines,
+            clampedStartLine,
+            clampedEndLine,
+          );
+
+          // Determine if content was truncated (either by line limit or character limit)
+          const truncated = actualEndLine < totalLines;
 
           return {
             content,
             isDirectory: false,
             totalLines,
             startLine: clampedStartLine,
-            endLine: clampedEndLine,
+            endLine: actualEndLine,
             truncated,
+            truncationNote,
           };
         }
 

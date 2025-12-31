@@ -371,8 +371,8 @@ describe('searchCode unit', () => {
     // Arrange
     const mockSearchResponse = {
       data: {
-        count: 100,
-        results: Array(10)
+        count: 500,
+        results: Array(100)
           .fill(0)
           .map((_, i) => ({
             fileName: `example${i}.ts`,
@@ -410,23 +410,28 @@ describe('searchCode unit', () => {
 
     mockedAxios.post.mockResolvedValueOnce(mockSearchResponse);
 
-    // Act
-    await searchCode(mockConnection, {
+    // Act - request page 2 (0-indexed, so this is the 3rd page)
+    const result = await searchCode(mockConnection, {
       searchText: 'example',
       projectId: 'TestProject',
-      top: 10,
-      skip: 20,
+      page: 2,
     });
 
-    // Assert
+    // Assert - page 2 means skip 200 (2 * 100 page size), top 100
     expect(mockedAxios.post).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        $top: 10,
-        $skip: 20,
+        $top: 100,
+        $skip: 200,
       }),
       expect.any(Object),
     );
+
+    // Check pagination metadata in response
+    expect(result.currentPage).toBe(2);
+    expect(result.pageSize).toBe(100);
+    expect(result.totalPages).toBe(5); // 500 / 100 = 5 pages
+    expect(result.hasMore).toBe(true); // page 2 has pages 3 and 4 after it
   });
 
   test('should handle errors when fetching file content', async () => {
@@ -958,7 +963,7 @@ describe('searchCode unit', () => {
     );
   });
 
-  test('should limit top to 10 when includeContent is true', async () => {
+  test('should limit results to 10 when includeContent is true', async () => {
     // Arrange
     const mockSearchResponse = {
       data: {
@@ -1011,15 +1016,14 @@ describe('searchCode unit', () => {
       serverUrl: 'https://dev.azure.com/testorg',
     } as unknown as WebApi;
 
-    // Act
+    // Act - when includeContent is true, results should be limited to 10
     await searchCode(mockConnectionWithoutContent, {
       searchText: 'example',
       projectId: 'TestProject',
-      top: 50, // User tries to get 50 results
-      includeContent: true, // But includeContent is true
+      includeContent: true,
     });
 
-    // Assert
+    // Assert - should be limited to 10 when includeContent is true
     expect(mockedAxios.post).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -1029,35 +1033,40 @@ describe('searchCode unit', () => {
     );
   });
 
-  test('should not limit top when includeContent is false', async () => {
+  test('should use full page size when includeContent is false', async () => {
     // Arrange
     const mockSearchResponse = {
       data: {
-        count: 50,
-        results: Array(50)
+        count: 100,
+        results: Array(100)
           .fill(0)
           .map((_, i) => ({
-            // ... simplified result object
             fileName: `example${i}.ts`,
+            path: `/src/example${i}.ts`,
+            matches: {},
+            collection: { name: 'DefaultCollection' },
+            project: { name: 'TestProject', id: 'project-id' },
+            repository: { name: 'TestRepo', id: 'repo-id', type: 'git' },
+            versions: [{ branchName: 'main', changeId: 'commit-hash' }],
+            contentId: `content-hash-${i}`,
           })),
       },
     };
 
     mockedAxios.post.mockResolvedValueOnce(mockSearchResponse);
 
-    // Act
+    // Act - without includeContent, should use full page size (100)
     await searchCode(mockConnection, {
       searchText: 'example',
       projectId: 'TestProject',
-      top: 50, // User wants 50 results
-      includeContent: false, // includeContent is false
+      includeContent: false,
     });
 
-    // Assert
+    // Assert - should use full page size of 100
     expect(mockedAxios.post).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        $top: 50, // Should use requested value
+        $top: 100, // Should use full page size
       }),
       expect.any(Object),
     );

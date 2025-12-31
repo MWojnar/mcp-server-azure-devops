@@ -33,7 +33,6 @@ describe('searchCode integration', () => {
     const options: SearchCodeOptions = {
       searchText: 'function',
       projectId: projectName,
-      top: 10,
     };
 
     try {
@@ -91,7 +90,6 @@ describe('searchCode integration', () => {
     const options: SearchCodeOptions = {
       searchText: 'function',
       projectId: projectName,
-      top: 5,
       includeContent: true,
     };
 
@@ -145,7 +143,6 @@ describe('searchCode integration', () => {
       const initialOptions: SearchCodeOptions = {
         searchText: 'function',
         projectId: projectName,
-        top: 1,
       };
 
       const initialResult = await searchCode(connection, initialOptions);
@@ -165,7 +162,6 @@ describe('searchCode integration', () => {
         filters: {
           Repository: [repoName],
         },
-        top: 5,
       };
 
       // Act - make an actual API call to Azure DevOps with filters
@@ -213,31 +209,37 @@ describe('searchCode integration', () => {
     }
 
     try {
-      // Get first page
+      // Get first page (page 0)
       const firstPageOptions: SearchCodeOptions = {
         searchText: 'function',
         projectId: projectName,
-        top: 2,
-        skip: 0,
+        page: 0,
       };
 
       const firstPageResult = await searchCode(connection, firstPageOptions);
 
-      // Skip if not enough results for pagination test
-      if (firstPageResult.count <= 2) {
-        console.log('Skipping pagination test: Not enough results');
+      // Skip if not enough results for pagination test (need more than one page)
+      if (firstPageResult.count <= 100) {
+        console.log(
+          'Skipping pagination test: Not enough results for multiple pages',
+        );
         return;
       }
 
-      // Get second page
+      // Get second page (page 1)
       const secondPageOptions: SearchCodeOptions = {
         searchText: 'function',
         projectId: projectName,
-        top: 2,
-        skip: 2,
+        page: 1,
       };
 
       const secondPageResult = await searchCode(connection, secondPageOptions);
+
+      // Assert on pagination metadata
+      expect(firstPageResult.currentPage).toBe(0);
+      expect(secondPageResult.currentPage).toBe(1);
+      expect(firstPageResult.pageSize).toBe(100);
+      expect(secondPageResult.pageSize).toBe(100);
 
       // Assert on pagination
       expect(secondPageResult).toBeDefined();
@@ -298,7 +300,6 @@ describe('searchCode integration', () => {
       // Search without specifying a project ID
       const options: SearchCodeOptions = {
         searchText: 'function',
-        top: 5,
       };
 
       // Act - make an actual API call to Azure DevOps

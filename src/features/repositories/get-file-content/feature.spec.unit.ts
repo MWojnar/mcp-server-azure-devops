@@ -77,6 +77,11 @@ describe('getFileContent', () => {
     expect(result).toEqual({
       content: mockFileContent,
       isDirectory: false,
+      totalLines: 1,
+      startLine: 1,
+      endLine: 1,
+      truncated: false,
+      truncationNote: undefined,
     });
   });
 
@@ -128,6 +133,11 @@ describe('getFileContent', () => {
     expect(result).toEqual({
       content: mockFileContent,
       isDirectory: false,
+      totalLines: 1,
+      startLine: 1,
+      endLine: 1,
+      truncated: false,
+      truncationNote: undefined,
     });
   });
 

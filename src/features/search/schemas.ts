@@ -2,6 +2,11 @@ import { z } from 'zod';
 import { defaultOrg, defaultProject } from '../../utils/environment';
 
 /**
+ * Page size for code search results (fixed to prevent token overflow)
+ */
+export const CODE_SEARCH_PAGE_SIZE = 100;
+
+/**
  * Schema for searching code in Azure DevOps repositories
  */
 export const SearchCodeSchema = z
@@ -35,19 +40,14 @@ export const SearchCodeSchema = z
       })
       .optional()
       .describe('Optional filters to narrow search results'),
-    top: z
-      .number()
-      .int()
-      .min(1)
-      .max(1000)
-      .default(100)
-      .describe('Number of results to return (default: 100, max: 1000)'),
-    skip: z
+    page: z
       .number()
       .int()
       .min(0)
       .default(0)
-      .describe('Number of results to skip for pagination (default: 0)'),
+      .describe(
+        `Page number for pagination (0-indexed, default: 0). Each page returns up to ${CODE_SEARCH_PAGE_SIZE} results.`,
+      ),
     includeSnippet: z
       .boolean()
       .default(true)

@@ -14,7 +14,56 @@ import {
   CodeSearchResponse,
   CodeSearchResult,
 } from '../types';
+import { CODE_SEARCH_PAGE_SIZE } from '../schemas';
 import { GitVersionType } from 'azure-devops-node-api/interfaces/GitInterfaces';
+
+// Content truncation constants
+const MAX_CONTENT_CHARACTERS = 20000;
+const MAX_LINE_LENGTH = 1000;
+
+/**
+ * Truncates content to stay within character limits
+ * First truncates long lines, then truncates total content if needed
+ *
+ * @param content The raw content string
+ * @returns Truncated content string
+ */
+function truncateFileContent(content: string): string {
+  const lines = content.split('\n');
+
+  // First pass: truncate individual lines that exceed MAX_LINE_LENGTH
+  const processedLines = lines.map((line) => {
+    if (line.length > MAX_LINE_LENGTH) {
+      return line.substring(0, MAX_LINE_LENGTH) + ' [truncated]';
+    }
+    return line;
+  });
+
+  // Join and check total length
+  let result = processedLines.join('\n');
+
+  // Second pass: if still over MAX_CONTENT_CHARACTERS, truncate from end
+  if (result.length > MAX_CONTENT_CHARACTERS) {
+    let currentLength = 0;
+    let lastValidIndex = 0;
+
+    for (let i = 0; i < processedLines.length; i++) {
+      const lineLength = processedLines[i].length + (i > 0 ? 1 : 0); // +1 for newline
+      if (currentLength + lineLength > MAX_CONTENT_CHARACTERS) {
+        break;
+      }
+      currentLength += lineLength;
+      lastValidIndex = i;
+    }
+
+    // Take only the lines that fit
+    const fittingLines = processedLines.slice(0, lastValidIndex + 1);
+    result = fittingLines.join('\n');
+    result += '\n[content truncated due to size limits]';
+  }
+
+  return result;
+}
 
 /**
  * Search for code in Azure DevOps repositories
@@ -28,10 +77,16 @@ export async function searchCode(
   options: SearchCodeOptions,
 ): Promise<CodeSearchResponse> {
   try {
-    // When includeContent is true, limit results to prevent timeouts
+    // Calculate pagination values from page number
+    // Treat invalid/negative page as 0
+    const page = Math.max(0, options.page ?? 0);
+
+    // When includeContent is true, limit results to prevent timeouts (max 10)
     const top = options.includeContent
-      ? Math.min(options.top || 10, 10)
-      : options.top;
+      ? Math.min(CODE_SEARCH_PAGE_SIZE, 10)
+      : CODE_SEARCH_PAGE_SIZE;
+
+    const skip = page * CODE_SEARCH_PAGE_SIZE;
 
     // Get the project ID (either provided or default)
     const projectId =
@@ -46,8 +101,8 @@ export async function searchCode(
     // Prepare the search request
     const searchRequest: CodeSearchRequest = {
       searchText: options.searchText,
-      $skip: options.skip,
-      $top: top, // Use limited top value when includeContent is true
+      $skip: skip,
+      $top: top,
       filters: {
         Project: [projectId],
         ...(options.filters || {}),
@@ -83,7 +138,17 @@ export async function searchCode(
       await enrichResultsWithContent(connection, results.results);
     }
 
-    return results;
+    // Add pagination metadata
+    const totalPages = Math.ceil(results.count / CODE_SEARCH_PAGE_SIZE);
+    const hasMore = page < totalPages - 1;
+
+    return {
+      ...results,
+      currentPage: page,
+      totalPages,
+      pageSize: CODE_SEARCH_PAGE_SIZE,
+      hasMore,
+    };
   } catch (error) {
     if (error instanceof AzureDevOpsError) {
       throw error;
@@ -236,7 +301,7 @@ async function enrichResultsWithContent(
             });
 
             // Use a promise to wait for the stream to finish
-            result.content = await new Promise<string>((resolve, reject) => {
+            const rawContent = await new Promise<string>((resolve, reject) => {
               contentStream.on('end', () => {
                 // Concatenate all chunks and convert to string
                 const buffer = Buffer.concat(chunks);
@@ -247,6 +312,9 @@ async function enrichResultsWithContent(
                 reject(err);
               });
             });
+
+            // Apply truncation to prevent token overflow
+            result.content = truncateFileContent(rawContent);
           }
         } catch (error) {
           // Log the error but don't fail the entire operation

@@ -10,8 +10,7 @@ export interface SearchCodeOptions {
     Branch?: string[];
     CodeElement?: string[];
   };
-  top?: number;
-  skip?: number;
+  page?: number;
   includeSnippet?: boolean;
   includeContent?: boolean;
 }
@@ -115,6 +114,14 @@ export interface CodeSearchResponse {
     Branch?: CodeSearchFacet[];
     CodeElement?: CodeSearchFacet[];
   };
+  /** Current page number (0-indexed) */
+  currentPage?: number;
+  /** Total number of pages available */
+  totalPages?: number;
+  /** Number of results per page */
+  pageSize?: number;
+  /** Whether there are more pages available */
+  hasMore?: boolean;
 }
 
 /**

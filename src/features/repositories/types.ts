@@ -131,6 +131,8 @@ export interface CommitFileChange {
   path: string;
   changeType?: string;
   patch?: string;
+  /** Indicates if the patch was truncated due to size limits */
+  truncated?: boolean;
 }
 
 /**
@@ -159,6 +161,8 @@ export interface CommitWithContent {
  */
 export interface ListCommitsResponse {
   commits: CommitWithContent[];
+  /** Note about any truncation applied to patch content */
+  truncationNote?: string;
 }
 
 /**

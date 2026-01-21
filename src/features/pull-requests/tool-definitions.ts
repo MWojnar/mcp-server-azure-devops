@@ -45,7 +45,7 @@ export const pullRequestsTools: ToolDefinition[] = [
   {
     name: 'get_pull_request_changes',
     description:
-      'Get the files changed in a pull request, their unified diffs, source/target branch names, and the status of policy evaluations',
+      'Get the files changed in a pull request, source/target branch names, and policy evaluation status. By default returns only file paths (lightweight). Set includeDiffs=true to include unified diffs (WARNING: can produce very large responses for PRs with many changed files).',
     inputSchema: zodToJsonSchema(GetPullRequestChangesSchema),
   },
   {

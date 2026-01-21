@@ -40,6 +40,7 @@ describe('getPullRequestChanges unit', () => {
       projectId: 'p',
       repositoryId: 'r',
       pullRequestId: 1,
+      includeDiffs: true,
     });
 
     expect(result.changes).toEqual({

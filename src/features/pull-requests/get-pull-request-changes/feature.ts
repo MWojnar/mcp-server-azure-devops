@@ -8,6 +8,11 @@ import { PolicyEvaluationRecord } from 'azure-devops-node-api/interfaces/PolicyI
 import { AzureDevOpsError } from '../../../shared/errors';
 import { createTwoFilesPatch } from 'diff';
 
+/** Maximum characters for a single patch before truncation */
+const MAX_PATCH_LENGTH = 10000;
+/** Maximum total characters across all patches in the response */
+const MAX_TOTAL_PATCH_SIZE = 50000;
+
 export interface PullRequestChangesOptions {
   projectId: string;
   repositoryId: string;
@@ -19,6 +24,8 @@ export interface PullRequestFileChange {
   path: string;
   changeType?: string;
   patch?: string;
+  /** Indicates if the patch was truncated due to size limits */
+  truncated?: boolean;
 }
 
 export interface PullRequestChangesResponse {
@@ -27,6 +34,25 @@ export interface PullRequestChangesResponse {
   files: PullRequestFileChange[];
   sourceRefName?: string;
   targetRefName?: string;
+  /** Note about any truncation applied to patch content */
+  truncationNote?: string;
+}
+
+/**
+ * Truncates a patch if it exceeds the maximum length
+ */
+function truncatePatch(patch: string): { patch: string; truncated: boolean } {
+  if (patch.length <= MAX_PATCH_LENGTH) {
+    return { patch, truncated: false };
+  }
+  return {
+    patch:
+      patch.substring(0, MAX_PATCH_LENGTH) +
+      '\n... [truncated - patch exceeded ' +
+      MAX_PATCH_LENGTH +
+      ' characters]',
+    truncated: true,
+  };
 }
 
 /**
@@ -96,9 +122,10 @@ export async function getPullRequestChanges(
     const changeEntries = changes.changeEntries ?? [];
 
     let files: PullRequestFileChange[];
+    let truncationNote: string | undefined;
 
     if (options.includeDiffs) {
-      // Fetch full diffs for each file
+      // Fetch full diffs for each file, with truncation
       const getBlobText = async (objId?: string): Promise<string> => {
         if (!objId) return '';
         const stream = await gitApi.getBlobContent(
@@ -117,26 +144,68 @@ export async function getPullRequestChanges(
         });
       };
 
+      let totalPatchSize = 0;
+      let truncatedPatchCount = 0;
+      let omittedPatchCount = 0;
+      const totalBudgetExceeded = () => totalPatchSize >= MAX_TOTAL_PATCH_SIZE;
+
       files = await Promise.all(
         changeEntries.map(async (entry: GitChange) => {
           const path = entry.item?.path || entry.originalPath || '';
+          const changeType = getChangeTypeName(entry.changeType);
+
+          // If we've exceeded total budget, skip fetching more diffs
+          if (totalBudgetExceeded()) {
+            omittedPatchCount++;
+            return {
+              path,
+              changeType,
+              patch: '[omitted - total patch size limit reached]',
+              truncated: true,
+            };
+          }
+
           const [oldContent, newContent] = await Promise.all([
             getBlobText(entry.item?.originalObjectId),
             getBlobText(entry.item?.objectId),
           ]);
-          const patch = createTwoFilesPatch(
+          const rawPatch = createTwoFilesPatch(
             entry.originalPath || path,
             path,
             oldContent,
             newContent,
           );
+
+          const { patch, truncated } = truncatePatch(rawPatch);
+          if (truncated) {
+            truncatedPatchCount++;
+          }
+          totalPatchSize += patch.length;
+
           return {
             path,
-            changeType: getChangeTypeName(entry.changeType),
+            changeType,
             patch,
+            truncated: truncated || undefined,
           };
         }),
       );
+
+      // Build truncation note if any truncation occurred
+      if (truncatedPatchCount > 0 || omittedPatchCount > 0) {
+        const notes: string[] = [];
+        if (truncatedPatchCount > 0) {
+          notes.push(
+            `${truncatedPatchCount} patch(es) truncated (exceeded ${MAX_PATCH_LENGTH} chars)`,
+          );
+        }
+        if (omittedPatchCount > 0) {
+          notes.push(
+            `${omittedPatchCount} patch(es) omitted (total size limit of ${MAX_TOTAL_PATCH_SIZE} chars reached)`,
+          );
+        }
+        truncationNote = notes.join('; ');
+      }
     } else {
       // Return only file paths and change types (no diffs)
       files = changeEntries.map((entry: GitChange) => ({
@@ -151,6 +220,7 @@ export async function getPullRequestChanges(
       files,
       sourceRefName: pullRequest?.sourceRefName,
       targetRefName: pullRequest?.targetRefName,
+      truncationNote,
     };
   } catch (error) {
     if (error instanceof AzureDevOpsError) {

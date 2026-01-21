@@ -49,6 +49,7 @@ describe('listCommits', () => {
       projectId: 'p',
       repositoryId: 'r',
       branchName: 'main',
+      includeDiffs: true,
     });
 
     expect(result.commits).toHaveLength(1);

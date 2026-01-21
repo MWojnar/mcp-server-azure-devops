@@ -100,7 +100,7 @@ export const repositoriesTools: ToolDefinition[] = [
   {
     name: 'list_commits',
     description:
-      'List recent commits on a branch including file-level diff content for each commit',
+      'List recent commits on a branch. By default returns only commit metadata and file paths (lightweight). Set includeDiffs=true to include full diff content (WARNING: can produce very large responses - use sparingly with small top values like 1-3).',
     inputSchema: zodToJsonSchema(ListCommitsSchema),
   },
 ];

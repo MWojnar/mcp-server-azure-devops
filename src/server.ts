@@ -105,6 +105,7 @@ export function createAzureDevOpsServer(config: AzureDevOpsConfig): Server {
         tools: {},
         resources: {},
       },
+      instructions: `Azure DevOps MCP Server v${VERSION}. This server provides tools to interact with Azure DevOps services including repositories, work items, pull requests, pipelines, wikis, and more.`,
     },
   );
 
